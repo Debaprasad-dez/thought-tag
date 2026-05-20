@@ -1,118 +1,252 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Palette, Trash2, Pin, PinOff } from 'lucide-react';
-import { Note as NoteType, NoteColor } from '../types';
-import ColorPicker from './ColorPicker';
+import { Pin, PinOff, Trash2, Palette, X, Plus, Download, Copy, GripHorizontal } from 'lucide-react';
+import { Note as NoteType, NoteColor, NOTE_COLORS } from '../types';
 
 interface NoteProps {
   note: NoteType;
   onUpdate: (note: Partial<NoteType>) => void;
   onDelete: () => void;
-  onDragStart: (e: React.DragEvent) => void;
-  onDragEnd: (e: React.DragEvent) => void;
-  onDrag: (e: React.DragEvent) => void;
+  onMove: (pos: { x: number; y: number }) => void;
+  onDragStart: () => void;
   onColorChange: (color: NoteColor) => void;
   onTogglePin: () => void;
+  onAddTag: (tag: string) => void;
+  onRemoveTag: (tag: string) => void;
+  onDuplicate: () => void;
 }
+
+const COLOR_BG_MAP: Record<NoteColor, string> = {
+  violet: 'var(--note-violet)',
+  rose:   'var(--note-rose)',
+  sky:    'var(--note-sky)',
+  sage:   'var(--note-sage)',
+  amber:  'var(--note-amber)',
+};
+
+const COLOR_BORDER_MAP: Record<NoteColor, string> = {
+  violet: 'hsl(258 60% 82%)',
+  rose:   'hsl(320 60% 85%)',
+  sky:    'hsl(204 70% 82%)',
+  sage:   'hsl(142 60% 80%)',
+  amber:  'hsl(45 80% 80%)',
+};
 
 const Note: React.FC<NoteProps> = ({
   note,
   onUpdate,
   onDelete,
+  onMove,
   onDragStart,
-  onDragEnd,
-  onDrag,
   onColorChange,
   onTogglePin,
+  onAddTag,
+  onRemoveTag,
+  onDuplicate,
 }) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [tagInput, setTagInput] = useState('');
+  const [showTagInput, setShowTagInput] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
-  const noteRef = useRef<HTMLDivElement>(null);
+  const tagInputRef = useRef<HTMLInputElement>(null);
+  const contentRef = useRef<HTMLTextAreaElement>(null);
+  const dragState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
 
   useEffect(() => {
-    if (note.isNew && titleRef.current) {
-      titleRef.current.focus();
-    }
+    if (note.isNew && titleRef.current) titleRef.current.focus();
   }, [note.isNew]);
 
-  const colorClasses = {
-    yellow: 'bg-note-yellow',
-    mint: 'bg-note-mint',
-    lavender: 'bg-note-lavender',
-    sky: 'bg-note-sky',
+  useEffect(() => {
+    if (showTagInput && tagInputRef.current) tagInputRef.current.focus();
+  }, [showTagInput]);
+
+  // Auto-grow content textarea (fallback for browsers without field-sizing)
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [note.content]);
+
+  // Pointer-capture drag via handle — survives re-renders
+  const handleHandlePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    onDragStart();
+    dragState.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: note.position.x,
+      originY: note.position.y,
+    };
+    setIsDragging(true);
+    document.body.style.userSelect = 'none';
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
-  const borderClasses = {
-    yellow: 'border-yellow-300',
-    mint: 'border-green-300',
-    lavender: 'border-purple-300',
-    sky: 'border-blue-300',
+  const handleHandlePointerMove = (e: React.PointerEvent) => {
+    if (!dragState.current) return;
+    const dx = e.clientX - dragState.current.startX;
+    const dy = e.clientY - dragState.current.startY;
+    onMove({
+      x: Math.max(0, dragState.current.originX + dx),
+      y: Math.max(0, dragState.current.originY + dy),
+    });
+  };
+
+  const handleHandlePointerUp = (e: React.PointerEvent) => {
+    if (!dragState.current) return;
+    dragState.current = null;
+    setIsDragging(false);
+    document.body.style.userSelect = '';
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+  };
+
+  const wordCount = note.content.trim().split(/\s+/).filter(Boolean).length;
+
+  const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && tagInput.trim()) {
+      onAddTag(tagInput.trim().toLowerCase().replace(/\s+/g, '-'));
+      setTagInput('');
+      setShowTagInput(false);
+    }
+    if (e.key === 'Escape') { setTagInput(''); setShowTagInput(false); }
+  };
+
+  const handleExport = () => {
+    const text = `${note.title}\n${'─'.repeat(40)}\n${note.content}\n\nTags: ${note.tags.join(', ') || 'none'}\nCreated: ${new Date(note.createdAt).toLocaleString()}`;
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${note.title || 'note'}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
     <div
-      ref={noteRef}
-      className={`note border ${colorClasses[note.color]} ${borderClasses[note.color]} dark:bg-note-dark dark:text-white animate-scale-up w-64 min-h-[160px] p-4 flex flex-col`}
+      className={`note-card group${note.isNew ? ' animate-scale-in' : ''}`}
       style={{
         position: 'absolute',
         left: `${note.position.x}px`,
         top: `${note.position.y}px`,
-        zIndex: note.isPinned ? 10 : 1,
+        zIndex: isDragging ? 999 : (note.zIndex ?? (note.isPinned ? 10 : 1)),
+        width: 256,
+        minHeight: 180,
+        background: COLOR_BG_MAP[note.color],
+        borderColor: COLOR_BORDER_MAP[note.color],
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '0 14px 10px',
+        boxShadow: isDragging
+          ? '0 16px 40px -8px rgba(0,0,0,0.25), 0 0 0 1px hsl(var(--primary)/0.3)'
+          : undefined,
+        transform: isDragging ? 'scale(1.02) rotate(-0.5deg)' : undefined,
+        transition: isDragging ? 'none' : 'box-shadow 0.2s, transform 0.1s',
       }}
-      draggable={!note.isPinned}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onDrag={onDrag}
     >
-      <div className="note-controls">
-        <button
-          onClick={onTogglePin}
-          className="p-1 rounded-full bg-white/80 dark:bg-gray-700/80 text-gray-700 dark:text-gray-200 hover:bg-white dark:hover:bg-gray-700"
-          aria-label={note.isPinned ? "Unpin note" : "Pin note"}
+      {/* Header: grip on left, actions on right — single row, no overlap */}
+      <div className="flex items-center -mx-3.5 px-2 h-8 border-b border-black/5 dark:border-white/10 rounded-t-xl shrink-0">
+        {/* Drag handle */}
+        <div
+          onPointerDown={handleHandlePointerDown}
+          onPointerMove={handleHandlePointerMove}
+          onPointerUp={handleHandlePointerUp}
+          onPointerCancel={handleHandlePointerUp}
+          className="flex items-center justify-center w-7 h-full cursor-grab active:cursor-grabbing text-black/30 dark:text-white/30 hover:text-black/55 dark:hover:text-white/55 hover:bg-black/5 dark:hover:bg-white/5 transition-colors rounded-tl-xl shrink-0"
+          style={{ touchAction: 'none' }}
+          title="Drag to move"
         >
-          {note.isPinned ? <PinOff size={16} /> : <Pin size={16} />}
-        </button>
-        <button
-          onClick={() => setShowColorPicker(!showColorPicker)}
-          className="p-1 rounded-full bg-white/80 dark:bg-gray-700/80 text-gray-700 dark:text-gray-200 hover:bg-white dark:hover:bg-gray-700"
-          aria-label="Change note color"
-        >
-          <Palette size={16} />
-        </button>
-        <button
-          onClick={onDelete}
-          className="p-1 rounded-full bg-white/80 dark:bg-gray-700/80 text-gray-700 dark:text-gray-200 hover:bg-white dark:hover:bg-gray-700"
-          aria-label="Delete note"
-        >
-          <Trash2 size={16} />
-        </button>
+          <GripHorizontal size={14} />
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-0.5">
+          <button onClick={onTogglePin} className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70 transition-all" aria-label={note.isPinned ? 'Unpin' : 'Pin'}>
+            {note.isPinned ? <PinOff size={11} /> : <Pin size={11} />}
+          </button>
+          <button onClick={() => setShowColorPicker(v => !v)} className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70 transition-all" aria-label="Change color">
+            <Palette size={11} />
+          </button>
+          <button onClick={onDuplicate} className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70 transition-all" aria-label="Duplicate">
+            <Copy size={11} />
+          </button>
+          <button onClick={handleExport} className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70 transition-all" aria-label="Export">
+            <Download size={11} />
+          </button>
+          <button onClick={onDelete} className="p-1.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/40 text-black/40 dark:text-white/40 hover:text-red-600 dark:hover:text-red-400 transition-all" aria-label="Delete">
+            <Trash2 size={11} />
+          </button>
+        </div>
       </div>
 
+      {/* Color picker */}
       {showColorPicker && (
-        <div className="absolute top-10 right-2 z-10">
-          <ColorPicker
-            selectedColor={note.color}
-            onColorChange={(color) => {
-              onColorChange(color);
-              setShowColorPicker(false);
-            }}
-          />
+        <div className="absolute top-9 right-2 z-20 flex gap-1.5 p-2 rounded-xl bg-white dark:bg-gray-900 shadow-lg border border-border animate-pop-in">
+          {NOTE_COLORS.map(c => (
+            <button key={c.name} onClick={() => { onColorChange(c.name); setShowColorPicker(false); }}
+              className="w-5 h-5 rounded-full border-2 transition-transform hover:scale-110"
+              style={{ background: c.value, borderColor: note.color === c.name ? 'hsl(var(--primary))' : 'transparent' }}
+              aria-label={c.label} />
+          ))}
         </div>
       )}
 
+      {/* Title */}
       <input
         ref={titleRef}
-        className={`font-bold text-lg bg-transparent border-none outline-none ${note.isPinned ? 'cursor-default' : 'cursor-move'} w-full mb-2`}
+        className="font-display font-semibold text-sm bg-transparent border-none outline-none w-full mt-2 mb-1 text-gray-800 dark:text-gray-100 placeholder:text-gray-400"
         placeholder="Title"
         value={note.title}
-        onChange={(e) => onUpdate({ ...note, title: e.target.value })}
+        onChange={e => onUpdate({ title: e.target.value })}
       />
 
+      {/* Content */}
       <textarea
-        className="flex-1 bg-transparent border-none outline-none resize-none min-h-[80px] w-full"
-        placeholder="Write your note here..."
+        ref={contentRef}
+        className="flex-1 bg-transparent border-none outline-none resize-none text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400 leading-relaxed min-h-[80px] w-full font-body overflow-hidden"
+        style={{ fieldSizing: 'content' } as React.CSSProperties}
+        placeholder="Write your thought here…"
         value={note.content}
-        onChange={(e) => onUpdate({ ...note, content: e.target.value })}
+        onChange={e => onUpdate({ content: e.target.value })}
       />
+
+      {/* Tags */}
+      <div className="flex flex-wrap gap-1 mt-2">
+        {note.tags.map(tag => (
+          <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-white/50 dark:bg-black/30 text-gray-600 dark:text-gray-300 group/tag">
+            #{tag}
+            <button onClick={() => onRemoveTag(tag)} className="opacity-0 group-hover/tag:opacity-100 transition-opacity hover:text-red-500" aria-label={`Remove ${tag}`}>
+              <X size={9} />
+            </button>
+          </span>
+        ))}
+        {showTagInput ? (
+          <input
+            ref={tagInputRef}
+            value={tagInput}
+            onChange={e => setTagInput(e.target.value)}
+            onKeyDown={handleTagKeyDown}
+            onBlur={() => { setTagInput(''); setShowTagInput(false); }}
+            placeholder="tag name"
+            className="text-xs px-2 py-0.5 rounded-full bg-white/70 dark:bg-black/40 border border-dashed border-gray-400 outline-none w-20 text-gray-600 dark:text-gray-300"
+          />
+        ) : (
+          <button onClick={() => setShowTagInput(true)} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-black/30 transition-all opacity-0 group-hover:opacity-100" aria-label="Add tag">
+            <Plus size={9} /> tag
+          </button>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between mt-2 pt-2 border-t border-black/5 dark:border-white/10">
+        <span className="text-xs text-gray-400 font-mono">{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
+        {note.isPinned && <span className="text-xs text-gray-400 flex items-center gap-1"><Pin size={10} /> pinned</span>}
+      </div>
     </div>
   );
 };

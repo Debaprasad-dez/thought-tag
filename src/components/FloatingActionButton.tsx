@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 
 interface FloatingActionButtonProps {
   onClick: () => void;
@@ -9,13 +8,13 @@ interface FloatingActionButtonProps {
 
 const FloatingActionButton: React.FC<FloatingActionButtonProps> = ({ onClick }) => {
   return (
-    <Button
+    <button
       onClick={onClick}
-      className="fab bg-primary text-primary-foreground h-14 w-14"
+      className="fab"
       aria-label="Create new note"
     >
-      <Plus className="h-6 w-6" />
-    </Button>
+      <Plus className="h-5 w-5" strokeWidth={2.5} />
+    </button>
   );
 };
 
