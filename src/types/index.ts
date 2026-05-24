@@ -34,3 +34,30 @@ export const NOTE_COLORS: ColorOption[] = [
 
 export type SortOption = 'newest' | 'oldest' | 'modified' | 'alpha';
 export type ViewMode = 'canvas' | 'grid';
+
+export type AnchorSide = 'top' | 'right' | 'bottom' | 'left';
+
+export interface NoteConnection {
+  id: string;
+  from: string;
+  to: string;
+  fromSide: AnchorSide;
+  toSide: AnchorSide;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
+export interface Workflow {
+  id: string;
+  name: string;
+  notes: Note[];
+  connections: NoteConnection[];
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
+}

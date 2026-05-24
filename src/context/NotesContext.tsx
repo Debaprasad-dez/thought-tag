@@ -1,10 +1,22 @@
 
 import React, { createContext, useContext } from 'react';
 import { useNotes } from '../hooks/useNotes';
-import { Note, NoteColor } from '../types';
+import { Note, NoteColor, NoteConnection, AnchorSide, Workflow, ChatMessage } from '../types';
 
 interface NotesContextType {
+  workflows: Workflow[];
+  activeId: string | null;
+  activeWorkflow: Workflow | null;
+  createWorkflow: (name?: string) => string;
+  renameWorkflow: (id: string, name: string) => void;
+  deleteWorkflow: (id: string) => void;
+  openWorkflow: (id: string) => void;
+  closeWorkflow: () => void;
+
   notes: Note[];
+  connections: NoteConnection[];
+  addConnection: (from: string, to: string, fromSide: AnchorSide, toSide: AnchorSide) => void;
+  removeConnection: (id: string) => void;
   allTags: { tag: string; count: number }[];
   addNote: () => string;
   updateNote: (note: Partial<Note> & { id: string }) => void;
@@ -14,7 +26,13 @@ interface NotesContextType {
   toggleNotePinned: (id: string) => void;
   addTagToNote: (id: string, tag: string) => void;
   removeTagFromNote: (id: string, tag: string) => void;
+  bringToFront: (id: string) => void;
+  duplicateNote: (id: string) => void;
   resetToDemo: () => void;
+  replaceAll: (notes: Note[], connections: NoteConnection[]) => void;
+  messages: ChatMessage[];
+  appendMessage: (role: 'user' | 'assistant', content: string) => ChatMessage;
+  clearChat: () => void;
 }
 
 const NotesContext = createContext<NotesContextType | undefined>(undefined);

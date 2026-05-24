@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, forwardRef } from 'react';
 import { Pin, PinOff, Trash2, Palette, X, Plus, Download, Copy, GripHorizontal } from 'lucide-react';
-import { Note as NoteType, NoteColor, NOTE_COLORS } from '../types';
+import { Note as NoteType, NoteColor, NOTE_COLORS, AnchorSide } from '../types';
 
 interface NoteProps {
   note: NoteType;
+  scale: number;
   onUpdate: (note: Partial<NoteType>) => void;
   onDelete: () => void;
   onMove: (pos: { x: number; y: number }) => void;
@@ -14,6 +15,8 @@ interface NoteProps {
   onAddTag: (tag: string) => void;
   onRemoveTag: (tag: string) => void;
   onDuplicate: () => void;
+  onAnchorPointerDown: (noteId: string, side: AnchorSide, e: React.PointerEvent) => void;
+  onAnchorPointerUp: (noteId: string, side: AnchorSide, e: React.PointerEvent) => void;
 }
 
 const COLOR_BG_MAP: Record<NoteColor, string> = {
@@ -32,8 +35,9 @@ const COLOR_BORDER_MAP: Record<NoteColor, string> = {
   amber:  'hsl(45 80% 80%)',
 };
 
-const Note: React.FC<NoteProps> = ({
+const Note = forwardRef<HTMLDivElement, NoteProps>(({
   note,
+  scale,
   onUpdate,
   onDelete,
   onMove,
@@ -43,7 +47,9 @@ const Note: React.FC<NoteProps> = ({
   onAddTag,
   onRemoveTag,
   onDuplicate,
-}) => {
+  onAnchorPointerDown,
+  onAnchorPointerUp,
+}, ref) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [showTagInput, setShowTagInput] = useState(false);
@@ -61,7 +67,6 @@ const Note: React.FC<NoteProps> = ({
     if (showTagInput && tagInputRef.current) tagInputRef.current.focus();
   }, [showTagInput]);
 
-  // Auto-grow content textarea (fallback for browsers without field-sizing)
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
@@ -69,7 +74,6 @@ const Note: React.FC<NoteProps> = ({
     el.style.height = `${el.scrollHeight}px`;
   }, [note.content]);
 
-  // Pointer-capture drag via handle — survives re-renders
   const handleHandlePointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -87,11 +91,11 @@ const Note: React.FC<NoteProps> = ({
 
   const handleHandlePointerMove = (e: React.PointerEvent) => {
     if (!dragState.current) return;
-    const dx = e.clientX - dragState.current.startX;
-    const dy = e.clientY - dragState.current.startY;
+    const dx = (e.clientX - dragState.current.startX) / scale;
+    const dy = (e.clientY - dragState.current.startY) / scale;
     onMove({
-      x: Math.max(0, dragState.current.originX + dx),
-      y: Math.max(0, dragState.current.originY + dy),
+      x: dragState.current.originX + dx,
+      y: dragState.current.originY + dy,
     });
   };
 
@@ -125,8 +129,17 @@ const Note: React.FC<NoteProps> = ({
     URL.revokeObjectURL(url);
   };
 
+  const anchorBase = "absolute w-3 h-3 rounded-full bg-white dark:bg-gray-800 border-2 border-primary opacity-0 group-hover:opacity-100 transition-opacity cursor-crosshair hover:scale-125 z-10";
+  const anchorHandlers = (side: AnchorSide) => ({
+    onPointerDown: (e: React.PointerEvent) => { e.stopPropagation(); onAnchorPointerDown(note.id, side, e); },
+    onPointerUp:   (e: React.PointerEvent) => { e.stopPropagation(); onAnchorPointerUp(note.id, side, e); },
+    style: { touchAction: 'none' as const },
+  });
+
   return (
     <div
+      ref={ref}
+      data-note-id={note.id}
       className={`note-card group${note.isNew ? ' animate-scale-in' : ''}`}
       style={{
         position: 'absolute',
@@ -147,9 +160,14 @@ const Note: React.FC<NoteProps> = ({
         transition: isDragging ? 'none' : 'box-shadow 0.2s, transform 0.1s',
       }}
     >
+      {/* Anchor handles — Figma-style connection points */}
+      <div {...anchorHandlers('top')}    className={anchorBase} style={{ ...anchorHandlers('top').style,    top: -6,    left: '50%', transform: 'translateX(-50%)' }} aria-label="Connect from top" />
+      <div {...anchorHandlers('right')}  className={anchorBase} style={{ ...anchorHandlers('right').style,  right: -6,  top: '50%',  transform: 'translateY(-50%)' }} aria-label="Connect from right" />
+      <div {...anchorHandlers('bottom')} className={anchorBase} style={{ ...anchorHandlers('bottom').style, bottom: -6, left: '50%', transform: 'translateX(-50%)' }} aria-label="Connect from bottom" />
+      <div {...anchorHandlers('left')}   className={anchorBase} style={{ ...anchorHandlers('left').style,   left: -6,   top: '50%',  transform: 'translateY(-50%)' }} aria-label="Connect from left" />
+
       {/* Header: grip on left, actions on right — single row, no overlap */}
       <div className="flex items-center -mx-3.5 px-2 h-8 border-b border-black/5 dark:border-white/10 rounded-t-xl shrink-0">
-        {/* Drag handle */}
         <div
           onPointerDown={handleHandlePointerDown}
           onPointerMove={handleHandlePointerMove}
@@ -164,7 +182,6 @@ const Note: React.FC<NoteProps> = ({
 
         <div className="flex-1" />
 
-        {/* Action buttons */}
         <div className="flex items-center gap-0.5">
           <button onClick={onTogglePin} className="p-1.5 rounded-md hover:bg-black/10 dark:hover:bg-white/10 text-black/40 dark:text-white/40 hover:text-black/70 dark:hover:text-white/70 transition-all" aria-label={note.isPinned ? 'Unpin' : 'Pin'}>
             {note.isPinned ? <PinOff size={11} /> : <Pin size={11} />}
@@ -184,7 +201,6 @@ const Note: React.FC<NoteProps> = ({
         </div>
       </div>
 
-      {/* Color picker */}
       {showColorPicker && (
         <div className="absolute top-9 right-2 z-20 flex gap-1.5 p-2 rounded-xl bg-white dark:bg-gray-900 shadow-lg border border-border animate-pop-in">
           {NOTE_COLORS.map(c => (
@@ -196,7 +212,6 @@ const Note: React.FC<NoteProps> = ({
         </div>
       )}
 
-      {/* Title */}
       <input
         ref={titleRef}
         className="font-display font-semibold text-sm bg-transparent border-none outline-none w-full mt-2 mb-1 text-gray-800 dark:text-gray-100 placeholder:text-gray-400"
@@ -205,7 +220,6 @@ const Note: React.FC<NoteProps> = ({
         onChange={e => onUpdate({ title: e.target.value })}
       />
 
-      {/* Content */}
       <textarea
         ref={contentRef}
         className="flex-1 bg-transparent border-none outline-none resize-none text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400 leading-relaxed min-h-[80px] w-full font-body overflow-hidden"
@@ -215,7 +229,6 @@ const Note: React.FC<NoteProps> = ({
         onChange={e => onUpdate({ content: e.target.value })}
       />
 
-      {/* Tags */}
       <div className="flex flex-wrap gap-1 mt-2">
         {note.tags.map(tag => (
           <span key={tag} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-white/50 dark:bg-black/30 text-gray-600 dark:text-gray-300 group/tag">
@@ -242,13 +255,14 @@ const Note: React.FC<NoteProps> = ({
         )}
       </div>
 
-      {/* Footer */}
       <div className="flex items-center justify-between mt-2 pt-2 border-t border-black/5 dark:border-white/10">
         <span className="text-xs text-gray-400 font-mono">{wordCount} {wordCount === 1 ? 'word' : 'words'}</span>
         {note.isPinned && <span className="text-xs text-gray-400 flex items-center gap-1"><Pin size={10} /> pinned</span>}
       </div>
     </div>
   );
-};
+});
+
+Note.displayName = 'Note';
 
 export default Note;

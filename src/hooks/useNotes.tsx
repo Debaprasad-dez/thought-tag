@@ -1,6 +1,6 @@
 
-import { useState, useEffect, useMemo } from 'react';
-import { Note, NoteColor, SortOption } from '../types';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Note, NoteColor, SortOption, NoteConnection, AnchorSide, Workflow, ChatMessage } from '../types';
 import { useToast } from '@/components/ui/use-toast';
 
 const DEMO_NOTES: Note[] = [
@@ -61,84 +61,152 @@ const DEMO_NOTES: Note[] = [
   },
 ];
 
+const STORAGE_KEY = 'thoughttag-workflows';
+const ACTIVE_KEY = 'thoughttag-active-workflow';
+const LEGACY_NOTES_KEY = 'thoughttag-notes';
+const LEGACY_CONN_KEY = 'thoughttag-connections';
+
+const makeWorkflow = (name: string, notes: Note[] = [], connections: NoteConnection[] = [], messages: ChatMessage[] = []): Workflow => {
+  const now = new Date().toISOString();
+  return { id: crypto.randomUUID(), name, notes, connections, messages, createdAt: now, updatedAt: now };
+};
+
+const loadInitial = (): { workflows: Workflow[]; activeId: string | null } => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const wfs: Workflow[] = (JSON.parse(raw) as Workflow[]).map(w => ({ ...w, messages: w.messages ?? [] }));
+      const aid = localStorage.getItem(ACTIVE_KEY);
+      return { workflows: wfs, activeId: aid && wfs.some(w => w.id === aid) ? aid : null };
+    }
+  } catch { /* ignore */ }
+
+  // Migrate legacy single-canvas storage
+  try {
+    const legacyNotes = localStorage.getItem(LEGACY_NOTES_KEY);
+    const legacyConns = localStorage.getItem(LEGACY_CONN_KEY);
+    if (legacyNotes) {
+      const notes: Note[] = JSON.parse(legacyNotes);
+      const conns: NoteConnection[] = legacyConns ? JSON.parse(legacyConns) : [];
+      const wf = makeWorkflow('My canvas', notes, conns);
+      return { workflows: [wf], activeId: null };
+    }
+  } catch { /* ignore */ }
+
+  // First-time: seed a demo workflow
+  const demo = makeWorkflow('Demo canvas', DEMO_NOTES, []);
+  return { workflows: [demo], activeId: null };
+};
+
 export const useNotes = () => {
-  const [notes, setNotes] = useState<Note[]>([]);
+  const initial = useMemo(loadInitial, []);
+  const [workflows, setWorkflows] = useState<Workflow[]>(initial.workflows);
+  const [activeId, setActiveId] = useState<string | null>(initial.activeId);
   const { toast } = useToast();
 
   useEffect(() => {
-    const saved = localStorage.getItem('thoughttag-notes');
-    if (saved) {
-      try {
-        setNotes(JSON.parse(saved));
-      } catch {
-        setNotes(DEMO_NOTES);
-      }
-    } else {
-      setNotes(DEMO_NOTES);
-    }
-  }, []);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(workflows));
+  }, [workflows]);
 
   useEffect(() => {
-    if (notes.length > 0) {
-      localStorage.setItem('thoughttag-notes', JSON.stringify(notes));
-    }
-  }, [notes]);
+    if (activeId) localStorage.setItem(ACTIVE_KEY, activeId);
+    else localStorage.removeItem(ACTIVE_KEY);
+  }, [activeId]);
 
-  const addNote = () => {
-    const maxZ = notes.reduce((m, n) => Math.max(m, n.zIndex ?? 1), 1);
-    const newNote: Note = {
-      id: crypto.randomUUID(),
-      title: '',
-      content: '',
-      color: 'violet',
-      position: {
-        x: Math.max(40, window.innerWidth / 2 - 150 + (notes.length % 6) * 20),
-        y: Math.max(40, 100 + (notes.length % 4) * 20),
-      },
-      tags: [],
-      isNew: true,
-      isPinned: false,
-      zIndex: maxZ + 1,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setNotes(prev => [...prev, newNote]);
-    return newNote.id;
+  const activeWorkflow = workflows.find(w => w.id === activeId) ?? null;
+  const notes = activeWorkflow?.notes ?? [];
+  const connections = activeWorkflow?.connections ?? [];
+
+  const touchWorkflow = (wf: Workflow): Workflow => ({ ...wf, updatedAt: new Date().toISOString() });
+
+  const updateActiveWorkflow = useCallback((mut: (wf: Workflow) => Workflow) => {
+    setWorkflows(prev => prev.map(w => w.id === activeId ? touchWorkflow(mut(w)) : w));
+  }, [activeId]);
+
+  // ---------- Workflow CRUD ----------
+  const createWorkflow = (name?: string): string => {
+    const wf = makeWorkflow(name?.trim() || `Workflow ${workflows.length + 1}`);
+    setWorkflows(prev => [...prev, wf]);
+    return wf.id;
+  };
+
+  const renameWorkflow = (id: string, name: string) => {
+    setWorkflows(prev => prev.map(w => w.id === id ? touchWorkflow({ ...w, name: name.trim() || w.name }) : w));
+  };
+
+  const deleteWorkflow = (id: string) => {
+    setWorkflows(prev => prev.filter(w => w.id !== id));
+    if (activeId === id) setActiveId(null);
+    toast({ title: 'Workflow deleted' });
+  };
+
+  const openWorkflow = (id: string) => setActiveId(id);
+  const closeWorkflow = () => setActiveId(null);
+
+  // ---------- Note CRUD (scoped to active workflow) ----------
+  const addNote = (): string => {
+    if (!activeId) return '';
+    const id = crypto.randomUUID();
+    updateActiveWorkflow(wf => {
+      const maxZ = wf.notes.reduce((m, n) => Math.max(m, n.zIndex ?? 1), 1);
+      const newNote: Note = {
+        id,
+        title: '',
+        content: '',
+        color: 'violet',
+        position: {
+          x: Math.max(40, window.innerWidth / 2 - 150 + (wf.notes.length % 6) * 20),
+          y: Math.max(40, 100 + (wf.notes.length % 4) * 20),
+        },
+        tags: [],
+        isNew: true,
+        isPinned: false,
+        zIndex: maxZ + 1,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      return { ...wf, notes: [...wf.notes, newNote] };
+    });
+    return id;
   };
 
   const updateNote = (updatedNote: Partial<Note> & { id: string }) => {
-    setNotes(prev =>
-      prev.map(note =>
-        note.id === updatedNote.id
-          ? { ...note, ...updatedNote, isNew: false, updatedAt: new Date().toISOString() }
-          : note
-      )
-    );
+    updateActiveWorkflow(wf => ({
+      ...wf,
+      notes: wf.notes.map(n => n.id === updatedNote.id
+        ? { ...n, ...updatedNote, isNew: false, updatedAt: new Date().toISOString() }
+        : n),
+    }));
   };
 
   const deleteNote = (id: string) => {
-    setNotes(prev => prev.filter(note => note.id !== id));
+    updateActiveWorkflow(wf => ({
+      ...wf,
+      notes: wf.notes.filter(n => n.id !== id),
+      connections: wf.connections.filter(c => c.from !== id && c.to !== id),
+    }));
     toast({ title: 'Note deleted' });
   };
 
   const updateNotePosition = (id: string, position: { x: number; y: number }) => {
-    setNotes(prev =>
-      prev.map(note => note.id === id ? { ...note, position } : note)
-    );
+    updateActiveWorkflow(wf => ({
+      ...wf,
+      notes: wf.notes.map(n => n.id === id ? { ...n, position } : n),
+    }));
   };
 
   const bringToFront = (id: string) => {
-    setNotes(prev => {
-      const maxZ = prev.reduce((m, n) => Math.max(m, n.zIndex ?? 1), 1);
-      return prev.map(note => note.id === id ? { ...note, zIndex: maxZ + 1 } : note);
+    updateActiveWorkflow(wf => {
+      const maxZ = wf.notes.reduce((m, n) => Math.max(m, n.zIndex ?? 1), 1);
+      return { ...wf, notes: wf.notes.map(n => n.id === id ? { ...n, zIndex: maxZ + 1 } : n) };
     });
   };
 
   const duplicateNote = (id: string) => {
-    setNotes(prev => {
-      const src = prev.find(n => n.id === id);
-      if (!src) return prev;
-      const maxZ = prev.reduce((m, n) => Math.max(m, n.zIndex ?? 1), 1);
+    updateActiveWorkflow(wf => {
+      const src = wf.notes.find(n => n.id === id);
+      if (!src) return wf;
+      const maxZ = wf.notes.reduce((m, n) => Math.max(m, n.zIndex ?? 1), 1);
       const copy: Note = {
         ...src,
         id: crypto.randomUUID(),
@@ -150,41 +218,54 @@ export const useNotes = () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
-      return [...prev, copy];
+      return { ...wf, notes: [...wf.notes, copy] };
     });
     toast({ title: 'Note duplicated' });
   };
 
   const updateNoteColor = (id: string, color: NoteColor) => {
-    setNotes(prev =>
-      prev.map(note => note.id === id ? { ...note, color, updatedAt: new Date().toISOString() } : note)
-    );
+    updateActiveWorkflow(wf => ({
+      ...wf,
+      notes: wf.notes.map(n => n.id === id ? { ...n, color, updatedAt: new Date().toISOString() } : n),
+    }));
   };
 
   const toggleNotePinned = (id: string) => {
-    setNotes(prev =>
-      prev.map(note => note.id === id ? { ...note, isPinned: !note.isPinned } : note)
-    );
+    updateActiveWorkflow(wf => ({
+      ...wf,
+      notes: wf.notes.map(n => n.id === id ? { ...n, isPinned: !n.isPinned } : n),
+    }));
   };
 
   const addTagToNote = (id: string, tag: string) => {
-    setNotes(prev =>
-      prev.map(note =>
-        note.id === id && !note.tags.includes(tag)
-          ? { ...note, tags: [...note.tags, tag], updatedAt: new Date().toISOString() }
-          : note
-      )
-    );
+    updateActiveWorkflow(wf => ({
+      ...wf,
+      notes: wf.notes.map(n => n.id === id && !n.tags.includes(tag)
+        ? { ...n, tags: [...n.tags, tag], updatedAt: new Date().toISOString() }
+        : n),
+    }));
   };
 
   const removeTagFromNote = (id: string, tag: string) => {
-    setNotes(prev =>
-      prev.map(note =>
-        note.id === id
-          ? { ...note, tags: note.tags.filter(t => t !== tag), updatedAt: new Date().toISOString() }
-          : note
-      )
-    );
+    updateActiveWorkflow(wf => ({
+      ...wf,
+      notes: wf.notes.map(n => n.id === id
+        ? { ...n, tags: n.tags.filter(t => t !== tag), updatedAt: new Date().toISOString() }
+        : n),
+    }));
+  };
+
+  // ---------- Connection CRUD ----------
+  const addConnection = (from: string, to: string, fromSide: AnchorSide, toSide: AnchorSide) => {
+    if (from === to) return;
+    updateActiveWorkflow(wf => {
+      if (wf.connections.some(c => (c.from === from && c.to === to) || (c.from === to && c.to === from))) return wf;
+      return { ...wf, connections: [...wf.connections, { id: crypto.randomUUID(), from, to, fromSide, toSide }] };
+    });
+  };
+
+  const removeConnection = (id: string) => {
+    updateActiveWorkflow(wf => ({ ...wf, connections: wf.connections.filter(c => c.id !== id) }));
   };
 
   const allTags = useMemo(() => {
@@ -200,13 +281,39 @@ export const useNotes = () => {
   }, [notes]);
 
   const resetToDemo = () => {
-    setNotes(DEMO_NOTES);
-    localStorage.setItem('thoughttag-notes', JSON.stringify(DEMO_NOTES));
+    updateActiveWorkflow(wf => ({ ...wf, notes: DEMO_NOTES, connections: [] }));
     toast({ title: 'Reset to demo data' });
   };
 
+  const replaceAll = (nextNotes: Note[], nextConnections: NoteConnection[]) => {
+    updateActiveWorkflow(wf => ({ ...wf, notes: nextNotes, connections: nextConnections }));
+  };
+
+  const messages = activeWorkflow?.messages ?? [];
+
+  const appendMessage = (role: 'user' | 'assistant', content: string): ChatMessage => {
+    const msg: ChatMessage = { id: crypto.randomUUID(), role, content, createdAt: new Date().toISOString() };
+    updateActiveWorkflow(wf => ({ ...wf, messages: [...wf.messages, msg] }));
+    return msg;
+  };
+
+  const clearChat = () => {
+    updateActiveWorkflow(wf => ({ ...wf, messages: [] }));
+  };
+
   return {
+    workflows,
+    activeId,
+    activeWorkflow,
+    createWorkflow,
+    renameWorkflow,
+    deleteWorkflow,
+    openWorkflow,
+    closeWorkflow,
     notes,
+    connections,
+    addConnection,
+    removeConnection,
     addNote,
     updateNote,
     deleteNote,
@@ -219,6 +326,10 @@ export const useNotes = () => {
     duplicateNote,
     allTags,
     resetToDemo,
+    replaceAll,
+    messages,
+    appendMessage,
+    clearChat,
   };
 };
 

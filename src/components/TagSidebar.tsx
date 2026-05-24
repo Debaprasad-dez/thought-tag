@@ -18,7 +18,7 @@ const TagSidebar: React.FC<TagSidebarProps> = ({
   onReset,
 }) => {
   return (
-    <aside className="w-52 shrink-0 flex flex-col gap-1 py-4 px-2 border-r bg-background/60">
+    <aside className="w-52 shrink-0 flex flex-col gap-1 py-4 px-2 border-l bg-background/60">
       <div className="px-2 mb-2">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Tags</p>
       </div>
