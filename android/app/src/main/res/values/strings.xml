@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">Thought Tag</string>
-    <string name="title_activity_main">Thought Tag</string>
-    <string name="package_name">com.debaprasad.thoughttag</string>
-    <string name="custom_url_scheme">com.debaprasad.thoughttag</string>
-</resources>
