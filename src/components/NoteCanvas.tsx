@@ -118,12 +118,21 @@ const NoteCanvas: React.FC<NoteCanvasProps> = ({
     };
   }, [scale, pan]);
 
+  // Refs to latest pan/scale so wheel/touch listeners can read current values
+  // without re-registering on every state tick (which would break mid-gesture)
+  const panRef = useRef(pan);
+  const scaleRef = useRef(scale);
+  panRef.current = pan;
+  scaleRef.current = scale;
+
   // Wheel: shift+wheel or ctrl+wheel (pinch) = zoom; otherwise pan
   useEffect(() => {
     const vp = viewportRef.current;
     if (!vp || viewMode !== 'canvas') return;
 
     const onWheel = (e: WheelEvent) => {
+      const curScale = scaleRef.current;
+      const curPan = panRef.current;
       if (e.ctrlKey) {
         // Pinch-zoom (trackpad pinch fires as ctrl+wheel)
         e.preventDefault();
@@ -131,9 +140,9 @@ const NoteCanvas: React.FC<NoteCanvasProps> = ({
         const cx = e.clientX - rect.left;
         const cy = e.clientY - rect.top;
         const delta = -e.deltaY * 0.01;
-        const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * Math.exp(delta)));
-        const worldX = (cx - pan.x) / scale;
-        const worldY = (cy - pan.y) / scale;
+        const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, curScale * Math.exp(delta)));
+        const worldX = (cx - curPan.x) / curScale;
+        const worldY = (cy - curPan.y) / curScale;
         setScale(nextScale);
         setPan({ x: cx - worldX * nextScale, y: cy - worldY * nextScale });
       } else if (e.shiftKey) {
@@ -143,9 +152,9 @@ const NoteCanvas: React.FC<NoteCanvasProps> = ({
         const cx = e.clientX - rect.left;
         const cy = e.clientY - rect.top;
         const delta = -(e.deltaY || e.deltaX) * 0.0015;
-        const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale * Math.exp(delta)));
-        const worldX = (cx - pan.x) / scale;
-        const worldY = (cy - pan.y) / scale;
+        const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, curScale * Math.exp(delta)));
+        const worldX = (cx - curPan.x) / curScale;
+        const worldY = (cy - curPan.y) / curScale;
         setScale(nextScale);
         setPan({ x: cx - worldX * nextScale, y: cy - worldY * nextScale });
       } else {
@@ -157,7 +166,120 @@ const NoteCanvas: React.FC<NoteCanvasProps> = ({
 
     vp.addEventListener('wheel', onWheel, { passive: false });
     return () => vp.removeEventListener('wheel', onWheel);
-  }, [scale, pan, viewMode]);
+  }, [viewMode]);
+
+  // Touch: single-finger pan on empty canvas, two-finger pinch zoom + pan
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp || viewMode !== 'canvas') return;
+
+    type TouchState =
+      | { mode: 'pan'; startX: number; startY: number; originPanX: number; originPanY: number; pointerId: number }
+      | { mode: 'pinch'; startDist: number; startScale: number; worldMidX: number; worldMidY: number }
+      | null;
+    let state: TouchState = null;
+
+    const isInteractive = (el: EventTarget | null): boolean => {
+      let node = el as HTMLElement | null;
+      while (node && node !== vp) {
+        const tag = node.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'BUTTON' || tag === 'SELECT' || node.isContentEditable) return true;
+        if (node.dataset && node.dataset.noPan === 'true') return true;
+        node = node.parentElement;
+      }
+      return false;
+    };
+
+    const dist = (a: Touch, b: Touch) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+
+    const onTouchStart = (e: TouchEvent) => {
+      const curScale = scaleRef.current;
+      const curPan = panRef.current;
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const rect = vp.getBoundingClientRect();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const midX = (t1.clientX + t2.clientX) / 2 - rect.left;
+        const midY = (t1.clientY + t2.clientY) / 2 - rect.top;
+        state = {
+          mode: 'pinch',
+          startDist: dist(t1, t2),
+          startScale: curScale,
+          worldMidX: (midX - curPan.x) / curScale,
+          worldMidY: (midY - curPan.y) / curScale,
+        };
+      } else if (e.touches.length === 1) {
+        if (isInteractive(e.target)) return;
+        e.preventDefault();
+        const t = e.touches[0];
+        state = {
+          mode: 'pan',
+          startX: t.clientX,
+          startY: t.clientY,
+          originPanX: curPan.x,
+          originPanY: curPan.y,
+          pointerId: t.identifier,
+        };
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!state) return;
+      if (state.mode === 'pinch' && e.touches.length >= 2) {
+        e.preventDefault();
+        const rect = vp.getBoundingClientRect();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const d = dist(t1, t2);
+        if (d <= 0 || state.startDist <= 0) return;
+        const ratio = d / state.startDist;
+        const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, state.startScale * ratio));
+        const midX = (t1.clientX + t2.clientX) / 2 - rect.left;
+        const midY = (t1.clientY + t2.clientY) / 2 - rect.top;
+        setScale(nextScale);
+        setPan({
+          x: midX - state.worldMidX * nextScale,
+          y: midY - state.worldMidY * nextScale,
+        });
+      } else if (state.mode === 'pan' && e.touches.length === 1) {
+        e.preventDefault();
+        const t = e.touches[0];
+        setPan({
+          x: state.originPanX + (t.clientX - state.startX),
+          y: state.originPanY + (t.clientY - state.startY),
+        });
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        state = null;
+      } else if (state?.mode === 'pinch' && e.touches.length === 1) {
+        const t = e.touches[0];
+        const curPan = panRef.current;
+        state = {
+          mode: 'pan',
+          startX: t.clientX,
+          startY: t.clientY,
+          originPanX: curPan.x,
+          originPanY: curPan.y,
+          pointerId: t.identifier,
+        };
+      }
+    };
+
+    vp.addEventListener('touchstart', onTouchStart, { passive: false });
+    vp.addEventListener('touchmove', onTouchMove, { passive: false });
+    vp.addEventListener('touchend', onTouchEnd);
+    vp.addEventListener('touchcancel', onTouchEnd);
+    return () => {
+      vp.removeEventListener('touchstart', onTouchStart);
+      vp.removeEventListener('touchmove', onTouchMove);
+      vp.removeEventListener('touchend', onTouchEnd);
+      vp.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [viewMode]);
 
   // Middle-mouse / space-drag pan on empty canvas
   const panState = useRef<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
@@ -277,6 +399,7 @@ const NoteCanvas: React.FC<NoteCanvasProps> = ({
       <div
         ref={viewportRef}
         className={`flex-1 relative ${viewMode === 'canvas' ? 'overflow-hidden' : 'overflow-auto'}`}
+        style={viewMode === 'canvas' ? { touchAction: 'none' } : undefined}
         onPointerDown={viewMode === 'canvas' ? handleViewportPointerDown : undefined}
         onPointerMove={viewMode === 'canvas' ? handleViewportPointerMove : undefined}
         onPointerUp={viewMode === 'canvas' ? handleViewportPointerUp : undefined}
