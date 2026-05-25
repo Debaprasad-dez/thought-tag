@@ -242,7 +242,7 @@
 
   /* Empty state */
   .empty-state {
-    @apply flex flex-col items-center justify-center text-center py-20 px-6;
+    @apply flex flex-col items-center justify-center text-center py-12 sm:py-20 px-4 sm:px-6;
   }
 }
 

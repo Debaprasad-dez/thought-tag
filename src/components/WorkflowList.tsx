@@ -35,10 +35,10 @@ const WorkflowList: React.FC = () => {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-5xl mx-auto px-6 py-10">
-        <div className="mb-8">
-          <h1 className="font-display text-2xl font-bold tracking-tight text-foreground mb-1">Your workflows</h1>
-          <p className="text-sm text-muted-foreground">Each workflow is its own canvas of notes and connections. Open one to start thinking.</p>
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <div className="mb-6 sm:mb-8">
+          <h1 className="font-display text-xl sm:text-2xl font-bold tracking-tight text-foreground mb-1">Your workflows</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">Each workflow is its own canvas of notes and connections. Open one to start thinking.</p>
         </div>
 
         {/* New workflow form */}

@@ -80,7 +80,14 @@ const ChatPanel: React.FC<Props> = ({ open, onClose }) => {
   if (!open) return null;
 
   return (
-    <aside className="w-[360px] shrink-0 flex flex-col border-l border-border bg-background/95 backdrop-blur">
+    <>
+      {/* Mobile backdrop */}
+      <div
+        className="fixed inset-0 z-40 bg-black/40 md:hidden"
+        onClick={onClose}
+        aria-hidden
+      />
+      <aside className="fixed inset-y-0 right-0 z-50 w-[88vw] max-w-[360px] flex flex-col border-l border-border bg-background/95 backdrop-blur shadow-2xl md:static md:z-auto md:w-[360px] md:max-w-none md:shrink-0 md:shadow-none">
       {/* Header */}
       <div className="flex items-center justify-between px-3 h-12 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
@@ -181,7 +188,8 @@ const ChatPanel: React.FC<Props> = ({ open, onClose }) => {
         </div>
         <p className="text-[10px] text-muted-foreground/70 mt-1.5 px-1">Enter to send · Shift+Enter for newline</p>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 };
 

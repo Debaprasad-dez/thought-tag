@@ -8,6 +8,7 @@ interface TagSidebarProps {
   onSelectTag: (tag: string | null) => void;
   totalNotes: number;
   onReset: () => void;
+  onClose?: () => void;
 }
 
 const TagSidebar: React.FC<TagSidebarProps> = ({
@@ -16,9 +17,18 @@ const TagSidebar: React.FC<TagSidebarProps> = ({
   onSelectTag,
   totalNotes,
   onReset,
+  onClose,
 }) => {
   return (
-    <aside className="w-52 shrink-0 flex flex-col gap-1 py-4 px-2 border-l bg-background/60">
+    <>
+      {onClose && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          onClick={onClose}
+          aria-hidden
+        />
+      )}
+      <aside className="fixed inset-y-0 right-0 z-50 w-52 flex flex-col gap-1 py-4 px-2 border-l bg-background shadow-2xl md:static md:z-auto md:shrink-0 md:bg-background/60 md:shadow-none">
       <div className="px-2 mb-2">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">Tags</p>
       </div>
@@ -62,7 +72,8 @@ const TagSidebar: React.FC<TagSidebarProps> = ({
           Reset to demo
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 };
 

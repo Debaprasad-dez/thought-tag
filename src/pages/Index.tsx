@@ -12,7 +12,7 @@ const IndexInner: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('canvas');
   const [sortBy, setSortBy] = useState<SortOption>('newest');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
@@ -53,6 +53,7 @@ const IndexInner: React.FC = () => {
             viewMode={viewMode}
             sortBy={sortBy}
             sidebarOpen={sidebarOpen}
+            onSidebarOpenChange={setSidebarOpen}
             activeTag={activeTag}
             onTagSelect={setActiveTag}
             chatOpen={chatOpen}

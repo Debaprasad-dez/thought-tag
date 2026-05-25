@@ -146,7 +146,7 @@ const Note = forwardRef<HTMLDivElement, NoteProps>(({
         left: `${note.position.x}px`,
         top: `${note.position.y}px`,
         zIndex: isDragging ? 999 : (note.zIndex ?? (note.isPinned ? 10 : 1)),
-        width: 256,
+        width: 'min(256px, calc(100vw - 48px))',
         minHeight: 180,
         background: COLOR_BG_MAP[note.color],
         borderColor: COLOR_BORDER_MAP[note.color],

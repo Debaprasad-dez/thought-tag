@@ -15,6 +15,7 @@ interface NoteCanvasProps {
   viewMode: ViewMode;
   sortBy: SortOption;
   sidebarOpen: boolean;
+  onSidebarOpenChange: (open: boolean) => void;
   activeTag: string | null;
   onTagSelect: (tag: string | null) => void;
   chatOpen: boolean;
@@ -49,6 +50,7 @@ const NoteCanvas: React.FC<NoteCanvasProps> = ({
   viewMode,
   sortBy,
   sidebarOpen,
+  onSidebarOpenChange,
   activeTag,
   onTagSelect,
   chatOpen,
@@ -364,7 +366,7 @@ const NoteCanvas: React.FC<NoteCanvasProps> = ({
             </div>
 
             {/* Zoom controls */}
-            <div className="absolute bottom-6 left-6 flex items-center gap-1 bg-background/90 backdrop-blur border border-border rounded-lg shadow-sm px-1 py-1 z-30">
+            <div className="absolute bottom-4 sm:bottom-6 left-4 sm:left-6 flex items-center gap-1 bg-background/90 backdrop-blur border border-border rounded-lg shadow-sm px-1 py-1 z-30">
               <button onClick={zoomOut} className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground" aria-label="Zoom out"><ZoomOut size={14} /></button>
               <button onClick={resetView} className="px-2 text-xs font-mono text-muted-foreground hover:text-foreground min-w-[44px]" aria-label="Reset zoom">{Math.round(scale * 100)}%</button>
               <button onClick={zoomIn} className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground" aria-label="Zoom in"><ZoomIn size={14} /></button>
@@ -430,10 +432,13 @@ const NoteCanvas: React.FC<NoteCanvasProps> = ({
           onSelectTag={onTagSelect}
           totalNotes={notes.length}
           onReset={resetToDemo}
+          onClose={() => onSidebarOpenChange(false)}
         />
       )}
 
-      <FloatingActionButton onClick={addNote} />
+      <div className={chatOpen ? 'hidden md:contents' : 'contents'}>
+        <FloatingActionButton onClick={addNote} />
+      </div>
     </div>
   );
 };
