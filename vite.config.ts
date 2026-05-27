@@ -27,7 +27,7 @@ export default defineConfig(() => ({
         description: "A calm, focused note-taking app with tags.",
         theme_color: "#7d3df0",
         background_color: "#f8f7fb",
-        display: "standalone",
+        display: "fullscreen",
         orientation: "portrait",
         scope: "/thought-tag/",
         start_url: "/thought-tag/",
